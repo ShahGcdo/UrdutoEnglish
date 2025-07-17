@@ -1,4 +1,4 @@
 streamlit
 TTS
-torch
 moviepy
+ffmpeg-python
