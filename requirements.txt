@@ -1,6 +1,6 @@
 streamlit
 transformers
 torch
-whisper
+faster-whisper
 gtts
 pydub
