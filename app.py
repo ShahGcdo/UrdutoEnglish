@@ -1,23 +1,42 @@
 import streamlit as st
 import torch
-import librosa
 import tempfile
 import os
-import soundfile as sf
-from transformers import WhisperForConditionalGeneration, WhisperProcessor, MarianMTModel, MarianTokenizer
+from transformers import pipeline, MarianMTModel, MarianTokenizer
 from gtts import gTTS
 
 st.set_page_config(page_title="Urdu to English Audio Translator", layout="centered")
 st.title("🎙️ Urdu Audio to English Translation")
 
-# Load Urdu ASR (Whisper-based)
-@st.cache_resource
-def load_urdu_asr():
-    processor = WhisperProcessor.from_pretrained("sadnow/whisper-small-ur")
-    model = WhisperForConditionalGeneration.from_pretrained("sadnow/whisper-small-ur")
-    return processor, model
+# ------------------------
+# Model Selector UI
+# ------------------------
+st.markdown("## 🛠️ Choose Urdu ASR Model")
+model_choice = st.selectbox("Select Urdu Transcription Model", [
+    "🔊 Whisper (kingabzpro/whisper-large-v3-urdu)",
+    "🎧 Wav2Vec2 (kingabzpro/wav2vec2-large-xls-r-300m-Urdu)"
+])
 
-# Load translation model
+# ------------------------
+# Model Loaders
+# ------------------------
+@st.cache_resource
+def load_whisper_model():
+    return pipeline(
+        "automatic-speech-recognition",
+        model="kingabzpro/whisper-large-v3-urdu",
+        device=0 if torch.cuda.is_available() else -1,
+        generation_kwargs={"language": "ur"}
+    )
+
+@st.cache_resource
+def load_wav2vec2_model():
+    return pipeline(
+        "automatic-speech-recognition",
+        model="kingabzpro/wav2vec2-large-xls-r-300m-Urdu",
+        device=0 if torch.cuda.is_available() else -1
+    )
+
 @st.cache_resource
 def load_translation_model():
     model_name = "Helsinki-NLP/opus-mt-ur-en"
@@ -25,56 +44,60 @@ def load_translation_model():
     model = MarianMTModel.from_pretrained(model_name)
     return tokenizer, model
 
-# Transcribe Urdu
-def transcribe_with_model(audio_path):
-    processor, model = load_urdu_asr()
-    audio, rate = librosa.load(audio_path, sr=16000)
-    input_features = processor(audio, sampling_rate=16000, return_tensors="pt").input_features
-    generated_ids = model.generate(input_features)
-    transcription = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
-    return transcription
+# ------------------------
+# Transcription Function
+# ------------------------
+def transcribe_urdu(audio_path, model_choice):
+    if "Whisper" in model_choice:
+        asr = load_whisper_model()
+    else:
+        asr = load_wav2vec2_model()
+    result = asr(audio_path)
+    return result["text"]
 
-# Translate Urdu to English
+# ------------------------
+# Translation Function
+# ------------------------
 def translate_urdu_to_english(urdu_text):
     tokenizer, model = load_translation_model()
     inputs = tokenizer(urdu_text, return_tensors="pt", padding=True, truncation=True)
     translated = model.generate(**inputs)
     return tokenizer.decode(translated[0], skip_special_tokens=True)
 
-# Convert text to English speech
+# ------------------------
+# Text-to-Speech Function
+# ------------------------
 def generate_english_audio(text, output_path):
     tts = gTTS(text, lang="en")
     tts.save(output_path)
 
-# UI
-uploaded_file = st.file_uploader("Upload Urdu Audio", type=["mp3", "wav", "m4a"])
+# ------------------------
+# UI Upload and Process
+# ------------------------
+uploaded_file = st.file_uploader("📤 Upload Urdu Audio", type=["mp3", "wav", "m4a"])
 
 if uploaded_file:
     st.audio(uploaded_file, format="audio/mp3")
 
     if st.button("✨ Translate and Generate English Audio"):
         with st.spinner("Processing..."):
-            # Save to temp file
             with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
                 tmp.write(uploaded_file.read())
                 temp_audio_path = tmp.name
 
-            # Transcribe Urdu
             try:
-                urdu_text = transcribe_with_model(temp_audio_path)
+                urdu_text = transcribe_urdu(temp_audio_path, model_choice)
             except Exception as e:
-                st.error(f"Transcription failed: {str(e)}")
+                st.error(f"Transcription failed: {e}")
                 os.remove(temp_audio_path)
                 st.stop()
 
-            # Translate
             english_text = translate_urdu_to_english(urdu_text)
 
-            # Generate English Audio
             english_audio_path = temp_audio_path.replace(".wav", "_english.mp3")
             generate_english_audio(english_text, english_audio_path)
 
-        # Show Results
+        # Output
         st.markdown("### 📝 Transcribed Urdu Text")
         st.write(urdu_text)
 
@@ -82,10 +105,8 @@ if uploaded_file:
         st.write(english_text)
 
         st.success("✅ English Audio Generated!")
-        audio_file = open(english_audio_path, "rb")
-        st.audio(audio_file.read(), format="audio/mp3")
+        with open(english_audio_path, "rb") as audio_file:
+            st.audio(audio_file.read(), format="audio/mp3")
 
-        # Cleanup
-        audio_file.close()
         os.remove(temp_audio_path)
         os.remove(english_audio_path)
