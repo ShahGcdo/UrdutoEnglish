@@ -54,6 +54,14 @@ if audio_file is not None:
             st.success("✅ English Audio Generated!")
             st.audio(output_path, format="audio/mp3")
 
+            with open(output_path, "rb") as f:
+                st.download_button(
+                    label="⬇️ Download English Audio (MP3)",
+                    data=f,
+                    file_name="english_audio.mp3",
+                    mime="audio/mpeg"
+                )
+
 # Feature 2: Urdu Text ➝ Urdu Audio
 st.header("🗣️ Urdu Text to Urdu Audio")
 urdu_input = st.text_area("✍️ Enter Urdu Text", key="urdu_text")
@@ -64,8 +72,17 @@ if st.button("🔊 Generate Urdu Audio"):
             tts = gTTS(urdu_input, lang='ur')
             urdu_audio_path = os.path.join(tempfile.gettempdir(), "urdu_audio.mp3")
             tts.save(urdu_audio_path)
+
             st.success("✅ Urdu Audio Generated!")
             st.audio(urdu_audio_path, format="audio/mp3")
+
+            with open(urdu_audio_path, "rb") as f:
+                st.download_button(
+                    label="⬇️ Download Urdu Audio (MP3)",
+                    data=f,
+                    file_name="urdu_audio.mp3",
+                    mime="audio/mpeg"
+                )
     else:
         st.warning("⚠️ Please enter some Urdu text.")
 
@@ -79,7 +96,16 @@ if st.button("🔊 Generate English Audio"):
             tts = gTTS(english_input, lang='en')
             english_audio_path = os.path.join(tempfile.gettempdir(), "english_audio.mp3")
             tts.save(english_audio_path)
+
             st.success("✅ English Audio Generated!")
             st.audio(english_audio_path, format="audio/mp3")
+
+            with open(english_audio_path, "rb") as f:
+                st.download_button(
+                    label="⬇️ Download English Audio (MP3)",
+                    data=f,
+                    file_name="english_audio.mp3",
+                    mime="audio/mpeg"
+                )
     else:
         st.warning("⚠️ Please enter some English text.")
