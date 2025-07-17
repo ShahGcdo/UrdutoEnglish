@@ -1,6 +1,7 @@
 streamlit
-openai-whisper
-gtts
-transformers==4.41.1
-sentencepiece
+transformers
 torch
+librosa
+soundfile
+gtts
+whisper
