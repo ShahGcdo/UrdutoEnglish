@@ -1,90 +1,45 @@
 import streamlit as st
-from TTS.api import TTS
-from moviepy.editor import TextClip, CompositeVideoClip, AudioFileClip
+from moviepy.editor import TextClip, CompositeVideoClip
 import tempfile
 import os
-from pydub import AudioSegment
 
-# Fix for TextClip (ImageMagick path)
+st.set_page_config(page_title="📝 Text to Scrolling Video", layout="centered")
+st.title("📝 Text to Scrolling Video (No Audio)")
+
+# Set ImageMagick path if needed
 os.environ["IMAGEMAGICK_BINARY"] = "/usr/bin/convert"
 
-st.set_page_config(page_title="🗣️ Text to Audio & Video", layout="centered")
-st.title("🗣️ English Text to Audio & Video (1280x720)")
+def generate_scrolling_video(text):
+    lines = text.strip().split('\n')
+    num_lines = len(lines)
+    duration_per_line = 2.5  # seconds per line
+    total_duration = duration_per_line * num_lines
 
-@st.cache_resource
-def load_tts():
-    return TTS(model_name="tts_models/en/ljspeech/tacotron2-DDC", progress_bar=False, gpu=False)
+    clips = []
+    for i, line in enumerate(lines):
+        txt_clip = TextClip(
+            line,
+            fontsize=48,
+            color='white',
+            size=(1280, 720),
+            method='caption',
+            bg_color='black'
+        ).set_duration(duration_per_line).set_start(i * duration_per_line)
+        clips.append(txt_clip)
 
-tts = load_tts()
-
-# Function to generate audio
-def generate_audio(text):
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_wav:
-        tts.tts_to_file(text=text, file_path=tmp_wav.name)
-        return tmp_wav.name
-
-# Convert to MP3 for download
-def convert_to_mp3(wav_path):
-    sound = AudioSegment.from_wav(wav_path)
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp_mp3:
-        sound.export(tmp_mp3.name, format="mp3")
-        return tmp_mp3.name
-
-# Function to create video (1280x720)
-def generate_video(text, audio_path):
-    audioclip = AudioFileClip(audio_path)
-    duration = audioclip.duration
-
-    # Generate text clip
-    clip = TextClip(
-        text,
-        fontsize=44,
-        color='white',
-        size=(1280, 720),
-        method='caption',
-        bg_color='black',
-        align='center'
-    ).set_duration(duration)
-
-    videoclip = clip.set_audio(audioclip)
+    video = CompositeVideoClip(clips, size=(1280, 720)).set_duration(total_duration)
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_video:
-        st.info("🎞️ Generating video... please wait ⏳")
-        videoclip.write_videofile(
-            tmp_video.name,
-            fps=12,
-            codec="libx264",
-            audio_codec="aac",
-            verbose=False,
-            threads=2,
-            logger=None
-        )
+        video.write_videofile(tmp_video.name, fps=24, codec="libx264", audio=False)
         return tmp_video.name
 
-# Tabs for audio and video
-tab1, tab2 = st.tabs(["🔊 Text to Audio", "🎬 Text to Video"])
+# UI
+input_text = st.text_area("Enter each line of text on a new line", height=200)
 
-with tab1:
-    eng_text = st.text_area("Enter English Text", height=150)
-
-    if st.button("🔈 Generate Audio"):
-        if eng_text.strip():
-            audio_path = generate_audio(eng_text)
-            st.session_state.generated_audio = convert_to_mp3(audio_path)
-            st.audio(st.session_state.generated_audio, format="audio/mp3")
-            st.download_button("⬇️ Download MP3", open(st.session_state.generated_audio, "rb"), file_name="speech.mp3", mime="audio/mp3")
-        else:
-            st.warning("Please enter some text.")
-
-with tab2:
-    eng_vid_text = st.text_area("Enter Text for Video (with voice)", height=150)
-
-    if st.button("🎞️ Generate Video"):
-        if eng_vid_text.strip():
-            audio_path = generate_audio(eng_vid_text)
-            video_path = generate_video(eng_vid_text, audio_path)
-            st.session_state.generated_video = video_path
-            st.video(video_path)
-            st.download_button("⬇️ Download MP4", open(video_path, "rb"), file_name="text_video.mp4", mime="video/mp4")
-        else:
-            st.warning("Please enter some text.")
+if st.button("🎞️ Generate Video"):
+    if input_text.strip():
+        video_path = generate_scrolling_video(input_text)
+        st.video(video_path)
+        st.download_button("⬇️ Download Video", open(video_path, "rb"), file_name="scrolling_text_video.mp4", mime="video/mp4")
+    else:
+        st.warning("Please enter text to generate video.")
