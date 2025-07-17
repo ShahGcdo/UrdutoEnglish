@@ -1,4 +1,5 @@
 streamlit
 TTS
+pydub
 moviepy
 ffmpeg-python
