@@ -1,83 +1,59 @@
 import streamlit as st
-import os
-import tempfile
 from PIL import Image, ImageDraw, ImageFont
-from moviepy.editor import ImageClip, concatenate_videoclips
+from moviepy.editor import *
+from TTS.api import TTS
+import tempfile
+import os
 
-st.set_page_config(page_title="📝 Text to Video Generator", layout="centered")
-st.title("📝 Text to Scrolling Video (No ImageMagick)")
+st.set_page_config(page_title="📖 Story Video with Voice", layout="wide")
+st.title("📖 Story Narrator with Video and Voice")
 
-# Load a basic TTF font (included with PIL or from system)
-def get_font(size=48):
-    try:
-        return ImageFont.truetype("DejaVuSans-Bold.ttf", size)
-    except:
-        return ImageFont.load_default()
+# Load Coqui TTS model once
+tts_model = TTS(model_name="tts_models/en/ljspeech/tacotron2-DDC", progress_bar=False, gpu=False)
 
-def render_text_to_image(text, size=(1280, 720), font_size=48):
-    img = Image.new("RGB", size, color="black")
+def generate_clip_with_audio(line_text, index):
+    # Create image
+    img = Image.new("RGB", (1280, 720), color=(10, 10, 10))
     draw = ImageDraw.Draw(img)
-    font = get_font(font_size)
+    font = ImageFont.truetype("DejaVuSans-Bold.ttf", 48)
 
-    # Wrap text if too long
-    lines = []
-    words = text.split()
-    line = ""
-    for word in words:
-        test_line = line + word + " "
-        if draw.textlength(test_line, font=font) > size[0] - 100:
-            lines.append(line)
-            line = word + " "
-        else:
-            line = test_line
-    lines.append(line)
+    w, h = draw.textsize(line_text, font=font)
+    draw.text(((1280 - w) / 2, (720 - h) / 2), line_text, font=font, fill="white")
 
-    # Vertical centering
-    y_text = (size[1] - (len(lines) * font_size)) // 2
-    for l in lines:
-        text_width = draw.textlength(l, font=font)
-        x = (size[0] - text_width) // 2
-        draw.text((x, y_text), l.strip(), font=font, fill="white")
-        y_text += font_size + 10
+    # Save image to temp file
+    img_path = tempfile.NamedTemporaryFile(suffix=".png", delete=False).name
+    img.save(img_path)
 
-    return img
+    # Generate audio using Coqui TTS
+    audio_path = tempfile.NamedTemporaryFile(suffix=".wav", delete=False).name
+    tts_model.tts_to_file(text=line_text, file_path=audio_path)
 
-def generate_video_from_text(text_lines):
-    duration_per_slide = 3
-    clips = []
+    # Load audio and image
+    audio_clip = AudioFileClip(audio_path)
+    duration = audio_clip.duration
+    img_clip = ImageClip(img_path).set_duration(duration)
 
-    for line in text_lines:
-        if line.strip() == "":
-            continue
-        image = render_text_to_image(line.strip())
-        temp_img = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-        image.save(temp_img.name)
+    # Combine audio + video
+    final_clip = img_clip.set_audio(audio_clip)
 
-        clip = ImageClip(temp_img.name).set_duration(duration_per_slide)
-        clips.append(clip)
+    return final_clip
 
-    if not clips:
-        return None
+def create_story_video(text):
+    lines = [line.strip() for line in text.strip().split("\n") if line.strip()]
+    clips = [generate_clip_with_audio(line, idx) for idx, line in enumerate(lines)]
+    final_video = concatenate_videoclips(clips, method="compose")
 
-    final_clip = concatenate_videoclips(clips, method="compose")
-    temp_video = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
-    final_clip.write_videofile(temp_video.name, fps=24, codec="libx264", audio=False)
-    return temp_video.name
+    output_path = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
+    final_video.write_videofile(output_path, fps=24)
+    return output_path
 
 # Streamlit UI
-input_text = st.text_area("✍️ Enter your story (each line will show as a slide):", height=300)
+input_text = st.text_area("📜 Enter Story Text (each line will be narrated separately):", height=300)
 
-if st.button("🎬 Generate Video"):
-    if not input_text.strip():
-        st.warning("Please enter some text.")
-    else:
-        with st.spinner("Generating video..."):
-            lines = input_text.strip().split('\n')
-            video_path = generate_video_from_text(lines)
-            if video_path:
-                st.success("✅ Video generated!")
-                st.video(video_path)
-                with open(video_path, "rb") as f:
-                    st.download_button("⬇️ Download Video", f, file_name="text_video.mp4", mime="video/mp4")
-            else:
-                st.error("❌ Failed to generate video.")
+if st.button("🎬 Generate Video with Voice"):
+    with st.spinner("Generating..."):
+        video_path = create_story_video(input_text)
+        st.success("Done! Preview below 👇")
+        st.video(video_path)
+        with open(video_path, "rb") as file:
+            st.download_button("⬇️ Download Video", file.read(), "story_video.mp4")
