@@ -1,6 +1,4 @@
 streamlit
-openai-whisper
-transformers==4.41.1
-sentencepiece
-torch
 TTS
+gtts
+torch
