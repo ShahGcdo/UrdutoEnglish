@@ -1,10 +1,7 @@
 streamlit
 transformers
 torch
-faster-whisper
-gtts
-pydub
 librosa
 soundfile
-sentencepiece
-protobuf
+gtts
+whisper
