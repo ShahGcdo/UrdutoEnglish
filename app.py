@@ -20,7 +20,7 @@ def generate_audio(text):
         tts.tts_to_file(text=text, file_path=tmp_wav.name)
         return tmp_wav.name
 
-# Convert to MP3 for download
+# Convert WAV to MP3 for download
 def convert_to_mp3(wav_path):
     sound = AudioSegment.from_wav(wav_path)
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp_mp3:
@@ -29,10 +29,18 @@ def convert_to_mp3(wav_path):
 
 # Function to create video (1280x720)
 def generate_video(text, audio_path):
-    clip = TextClip(text, fontsize=48, color='white', size=(1280, 720), method='caption', bg_color='black', align='center', duration=10)
+    clip = TextClip(
+        text,
+        fontsize=48,
+        color='white',
+        size=(1280, 720),
+        method='caption',
+        bg_color='black',
+        align='center'
+    )
     audioclip = AudioFileClip(audio_path)
-    videoclip = clip.set_audio(audioclip).set_duration(audioclip.duration)
-    
+    videoclip = clip.set_duration(audioclip.duration).set_audio(audioclip)
+
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_video:
         videoclip.write_videofile(tmp_video.name, fps=24, codec="libx264", audio_codec="aac")
         return tmp_video.name
