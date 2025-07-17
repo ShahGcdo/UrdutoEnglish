@@ -2,6 +2,7 @@ import streamlit as st
 import torch
 import tempfile
 import os
+import soundfile as sf
 from transformers import pipeline, MarianMTModel, MarianTokenizer
 from gtts import gTTS
 
@@ -13,7 +14,7 @@ st.title("🎙️ Urdu Audio to English Translation")
 # ------------------------
 st.markdown("## 🛠️ Choose Urdu ASR Model")
 model_choice = st.selectbox("Select Urdu Transcription Model", [
-    "🔊 Whisper (kingabzpro/whisper-large-v3-urdu)",
+    "🔊 Whisper-small (openai/whisper-small)",
     "🎧 Wav2Vec2 (kingabzpro/wav2vec2-large-xls-r-300m-Urdu)"
 ])
 
@@ -24,9 +25,9 @@ model_choice = st.selectbox("Select Urdu Transcription Model", [
 def load_whisper_model():
     return pipeline(
         "automatic-speech-recognition",
-        model="kingabzpro/whisper-large-v3-urdu",
-        device=0 if torch.cuda.is_available() else -1,
-        generation_kwargs={"language": "ur"}
+        model="openai/whisper-small",
+        device=-1,  # CPU
+        generation_kwargs={"language": "<|ur|>"}
     )
 
 @st.cache_resource
@@ -34,7 +35,7 @@ def load_wav2vec2_model():
     return pipeline(
         "automatic-speech-recognition",
         model="kingabzpro/wav2vec2-large-xls-r-300m-Urdu",
-        device=0 if torch.cuda.is_available() else -1
+        device=-1  # CPU
     )
 
 @st.cache_resource
@@ -81,19 +82,33 @@ if uploaded_file:
 
     if st.button("✨ Translate and Generate English Audio"):
         with st.spinner("Processing..."):
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
-                tmp.write(uploaded_file.read())
-                temp_audio_path = tmp.name
+            # Convert and save audio as clean WAV
+            try:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".input") as tmp_raw:
+                    tmp_raw.write(uploaded_file.read())
+                    tmp_raw_path = tmp_raw.name
 
+                audio_data, sample_rate = sf.read(tmp_raw_path)
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_wav:
+                    sf.write(tmp_wav.name, audio_data, sample_rate)
+                    temp_audio_path = tmp_wav.name
+                os.remove(tmp_raw_path)
+            except Exception as e:
+                st.error(f"❌ Audio conversion failed: {e}")
+                st.stop()
+
+            # Transcribe
             try:
                 urdu_text = transcribe_urdu(temp_audio_path, model_choice)
             except Exception as e:
-                st.error(f"Transcription failed: {e}")
+                st.error(f"❌ Transcription failed: {e}")
                 os.remove(temp_audio_path)
                 st.stop()
 
+            # Translate
             english_text = translate_urdu_to_english(urdu_text)
 
+            # TTS
             english_audio_path = temp_audio_path.replace(".wav", "_english.mp3")
             generate_english_audio(english_text, english_audio_path)
 
