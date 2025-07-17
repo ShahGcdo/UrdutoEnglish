@@ -4,24 +4,18 @@ import librosa
 import tempfile
 import os
 import soundfile as sf
-from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor, MarianMTModel, MarianTokenizer, pipeline
-import whisper
+from transformers import WhisperForConditionalGeneration, WhisperProcessor, MarianMTModel, MarianTokenizer
 from gtts import gTTS
 
 st.set_page_config(page_title="Urdu to English Audio Translator", layout="centered")
 st.title("🎙️ Urdu Audio to English Translation")
 
-# Load Urdu transcription model
+# Load Urdu ASR (Whisper-based)
 @st.cache_resource
 def load_urdu_asr():
-    processor = Wav2Vec2Processor.from_pretrained("jonatasgrosman/wav2vec2-large-xlsr-53-urdu")
-    model = Wav2Vec2ForCTC.from_pretrained("jonatasgrosman/wav2vec2-large-xlsr-53-urdu")
+    processor = WhisperProcessor.from_pretrained("sadnow/whisper-small-ur")
+    model = WhisperForConditionalGeneration.from_pretrained("sadnow/whisper-small-ur")
     return processor, model
-
-# Load Whisper model
-@st.cache_resource
-def load_whisper_model():
-    return whisper.load_model("base")
 
 # Load translation model
 @st.cache_resource
@@ -31,21 +25,14 @@ def load_translation_model():
     model = MarianMTModel.from_pretrained(model_name)
     return tokenizer, model
 
-# Transcribe Urdu using wav2vec2
-def transcribe_with_wav2vec2(audio_path):
+# Transcribe Urdu
+def transcribe_with_model(audio_path):
     processor, model = load_urdu_asr()
     audio, rate = librosa.load(audio_path, sr=16000)
-    inputs = processor(audio, return_tensors="pt", sampling_rate=16000)
-    with torch.no_grad():
-        logits = model(**inputs).logits
-    predicted_ids = torch.argmax(logits, dim=-1)
-    return processor.batch_decode(predicted_ids)[0]
-
-# Transcribe Urdu using Whisper
-def transcribe_with_whisper(audio_path):
-    model = load_whisper_model()
-    result = model.transcribe(audio_path, language="ur")
-    return result["text"]
+    input_features = processor(audio, sampling_rate=16000, return_tensors="pt").input_features
+    generated_ids = model.generate(input_features)
+    transcription = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+    return transcription
 
 # Translate Urdu to English
 def translate_urdu_to_english(urdu_text):
@@ -61,7 +48,6 @@ def generate_english_audio(text, output_path):
 
 # UI
 uploaded_file = st.file_uploader("Upload Urdu Audio", type=["mp3", "wav", "m4a"])
-transcriber_choice = st.selectbox("Choose Urdu Transcriber", ["🟢 Accurate (wav2vec2)", "⚪ Fast (Whisper)"])
 
 if uploaded_file:
     st.audio(uploaded_file, format="audio/mp3")
@@ -75,10 +61,7 @@ if uploaded_file:
 
             # Transcribe Urdu
             try:
-                if "wav2vec2" in transcriber_choice.lower():
-                    urdu_text = transcribe_with_wav2vec2(temp_audio_path)
-                else:
-                    urdu_text = transcribe_with_whisper(temp_audio_path)
+                urdu_text = transcribe_with_model(temp_audio_path)
             except Exception as e:
                 st.error(f"Transcription failed: {str(e)}")
                 os.remove(temp_audio_path)
