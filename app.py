@@ -3,8 +3,10 @@ from TTS.api import TTS
 from moviepy.editor import TextClip, CompositeVideoClip, AudioFileClip
 import tempfile
 import os
-import time
 from pydub import AudioSegment
+
+# Fix for TextClip (ImageMagick path)
+os.environ["IMAGEMAGICK_BINARY"] = "/usr/bin/convert"
 
 st.set_page_config(page_title="🗣️ Text to Audio & Video", layout="centered")
 st.title("🗣️ English Text to Audio & Video (1280x720)")
@@ -15,24 +17,25 @@ def load_tts():
 
 tts = load_tts()
 
-# Function to generate TTS audio
+# Function to generate audio
 def generate_audio(text):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_wav:
         tts.tts_to_file(text=text, file_path=tmp_wav.name)
         return tmp_wav.name
 
-# Convert WAV to MP3 for download
+# Convert to MP3 for download
 def convert_to_mp3(wav_path):
     sound = AudioSegment.from_wav(wav_path)
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp_mp3:
         sound.export(tmp_mp3.name, format="mp3")
         return tmp_mp3.name
 
-# Generate text-based video with audio
+# Function to create video (1280x720)
 def generate_video(text, audio_path):
     audioclip = AudioFileClip(audio_path)
     duration = audioclip.duration
 
+    # Generate text clip
     clip = TextClip(
         text,
         fontsize=44,
@@ -47,23 +50,20 @@ def generate_video(text, audio_path):
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_video:
         st.info("🎞️ Generating video... please wait ⏳")
-        start = time.time()
         videoclip.write_videofile(
             tmp_video.name,
-            fps=12,  # lower FPS for faster rendering
+            fps=12,
             codec="libx264",
             audio_codec="aac",
             verbose=False,
             threads=2,
             logger=None
         )
-        print(f"✅ Video generated in {time.time() - start:.2f} seconds.")
         return tmp_video.name
 
-# UI Tabs
+# Tabs for audio and video
 tab1, tab2 = st.tabs(["🔊 Text to Audio", "🎬 Text to Video"])
 
-# Text to Audio
 with tab1:
     eng_text = st.text_area("Enter English Text", height=150)
 
@@ -74,9 +74,8 @@ with tab1:
             st.audio(st.session_state.generated_audio, format="audio/mp3")
             st.download_button("⬇️ Download MP3", open(st.session_state.generated_audio, "rb"), file_name="speech.mp3", mime="audio/mp3")
         else:
-            st.warning("⚠️ Please enter some text.")
+            st.warning("Please enter some text.")
 
-# Text to Video
 with tab2:
     eng_vid_text = st.text_area("Enter Text for Video (with voice)", height=150)
 
@@ -88,4 +87,4 @@ with tab2:
             st.video(video_path)
             st.download_button("⬇️ Download MP4", open(video_path, "rb"), file_name="text_video.mp4", mime="video/mp4")
         else:
-            st.warning("⚠️ Please enter some text.")
+            st.warning("Please enter some text.")
