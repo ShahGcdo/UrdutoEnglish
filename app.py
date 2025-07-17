@@ -1,59 +1,62 @@
 import streamlit as st
-from PIL import Image, ImageDraw, ImageFont
-from moviepy.editor import *
-from TTS.api import TTS
-import tempfile
 import os
+from moviepy.editor import *
+from PIL import Image, ImageDraw, ImageFont
+import tempfile
+import uuid
+from TTS.api import TTS
 
-st.set_page_config(page_title="📖 Story Video with Voice", layout="wide")
-st.title("📖 Story Narrator with Video and Voice")
+# Initialize TTS model (Coqui)
+tts = TTS(model_name="tts_models/en/ljspeech/tacotron2-DDC", progress_bar=False, gpu=False)
 
-# Load Coqui TTS model once
-tts_model = TTS(model_name="tts_models/en/ljspeech/tacotron2-DDC", progress_bar=False, gpu=False)
+st.set_page_config(page_title="📖 Text-to-Story Video", layout="centered")
+st.title("📖 Create Story Video with Narration")
 
 def generate_clip_with_audio(line_text, index):
-    # Create image
-    img = Image.new("RGB", (1280, 720), color=(10, 10, 10))
-    draw = ImageDraw.Draw(img)
-    font = ImageFont.truetype("DejaVuSans-Bold.ttf", 48)
+    # Generate TTS audio
+    temp_dir = tempfile.mkdtemp()
+    audio_path = os.path.join(temp_dir, f"line_{index}.wav")
+    tts.tts_to_file(text=line_text, file_path=audio_path)
 
-    w, h = draw.textsize(line_text, font=font)
+    # Create an image with the text
+    img = Image.new("RGB", (1280, 720), color=(0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+    font = ImageFont.truetype(font_path, 48)
+
+    # Get text size using font.getsize
+    w, h = font.getsize(line_text)
     draw.text(((1280 - w) / 2, (720 - h) / 2), line_text, font=font, fill="white")
 
-    # Save image to temp file
-    img_path = tempfile.NamedTemporaryFile(suffix=".png", delete=False).name
+    # Save image
+    img_path = os.path.join(temp_dir, f"frame_{index}.png")
     img.save(img_path)
 
-    # Generate audio using Coqui TTS
-    audio_path = tempfile.NamedTemporaryFile(suffix=".wav", delete=False).name
-    tts_model.tts_to_file(text=line_text, file_path=audio_path)
-
-    # Load audio and image
+    # Create video clip
     audio_clip = AudioFileClip(audio_path)
-    duration = audio_clip.duration
-    img_clip = ImageClip(img_path).set_duration(duration)
+    img_clip = ImageClip(img_path).set_duration(audio_clip.duration)
+    img_clip = img_clip.set_audio(audio_clip)
 
-    # Combine audio + video
-    final_clip = img_clip.set_audio(audio_clip)
+    return img_clip
 
-    return final_clip
-
-def create_story_video(text):
-    lines = [line.strip() for line in text.strip().split("\n") if line.strip()]
+def create_story_video(full_text):
+    lines = [line.strip() for line in full_text.strip().split("\n") if line.strip()]
     clips = [generate_clip_with_audio(line, idx) for idx, line in enumerate(lines)]
-    final_video = concatenate_videoclips(clips, method="compose")
 
-    output_path = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
+    final_video = concatenate_videoclips(clips, method="compose")
+    output_path = os.path.join(tempfile.gettempdir(), f"story_{uuid.uuid4().hex}.mp4")
     final_video.write_videofile(output_path, fps=24)
+
     return output_path
 
-# Streamlit UI
-input_text = st.text_area("📜 Enter Story Text (each line will be narrated separately):", height=300)
+# UI
+input_text = st.text_area("✏️ Enter Story Text (one sentence per line):", height=250)
 
-if st.button("🎬 Generate Video with Voice"):
-    with st.spinner("Generating..."):
-        video_path = create_story_video(input_text)
-        st.success("Done! Preview below 👇")
-        st.video(video_path)
-        with open(video_path, "rb") as file:
-            st.download_button("⬇️ Download Video", file.read(), "story_video.mp4")
+if st.button("🎬 Generate Video"):
+    if input_text.strip():
+        with st.spinner("Generating your narrated video..."):
+            video_path = create_story_video(input_text)
+            st.success("✅ Video generated successfully!")
+            st.video(video_path)
+    else:
+        st.warning("Please enter some story text.")
