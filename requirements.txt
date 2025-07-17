@@ -4,3 +4,7 @@ torch
 faster-whisper
 gtts
 pydub
+librosa
+soundfile
+sentencepiece
+protobuf
