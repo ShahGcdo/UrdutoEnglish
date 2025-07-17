@@ -1,8 +1,6 @@
 streamlit
-torch
-librosa
 transformers
+torch
 whisper
 gtts
 pydub
-soundfile
