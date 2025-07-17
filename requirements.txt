@@ -1,4 +1,4 @@
-streamlit
 TTS
 moviepy
-pydub
+Pillow
+streamlit
