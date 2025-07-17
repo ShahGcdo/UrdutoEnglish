@@ -1,84 +1,62 @@
 import streamlit as st
-import tempfile
 import os
-import whisper
-from transformers import MarianMTModel, MarianTokenizer
+import tempfile
 from TTS.api import TTS
+from gtts import gTTS
+from io import BytesIO
 
-# Load English TTS model (safe for monetization)
+st.set_page_config(page_title="🎙️ Urdu-English TTS App", layout="wide")
+st.title("🎙️ Urdu & English Text to Audio App")
+
+# Load English-only TTS model (safe for YouTube)
 @st.cache_resource
-def load_tts_model():
+def load_english_tts():
     return TTS(model_name="tts_models/en/ljspeech/tacotron2-DDC", progress_bar=False, gpu=False)
 
-# Load translation model (Urdu → English)
-@st.cache_resource
-def load_translation_model():
-    model_name = "Helsinki-NLP/opus-mt-ur-en"
-    tokenizer = MarianTokenizer.from_pretrained(model_name)
-    model = MarianMTModel.from_pretrained(model_name)
-    return tokenizer, model
+english_tts = load_english_tts()
 
-def translate_urdu_to_english(urdu_text):
-    tokenizer, model = load_translation_model()
-    tokens = tokenizer.prepare_seq2seq_batch([urdu_text], return_tensors="pt")
-    translation = model.generate(**tokens)
-    english_text = tokenizer.decode(translation[0], skip_special_tokens=True)
-    return english_text
+# Function to synthesize speech and return audio buffer
+def synthesize_with_coqui(text, tts_model):
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_wav:
+        tts_model.tts_to_file(text=text, file_path=tmp_wav.name)
+        tmp_wav.seek(0)
+        return tmp_wav.name
 
-st.set_page_config(page_title="Urdu ↔ English Audio Translator", layout="centered")
-st.title("🎙️ Urdu ↔ English Audio Translator (YouTube Safe)")
+def synthesize_with_gtts(text, lang):
+    tts = gTTS(text, lang=lang)
+    mp3_fp = BytesIO()
+    tts.write_to_fp(mp3_fp)
+    mp3_fp.seek(0)
+    return mp3_fp
 
-tts_model = load_tts_model()
+st.markdown("---")
+st.header("✍️ English Text ➝ 🔊 Spoken English")
 
-# ---- Feature 1: Urdu Audio → English Audio ----
-st.header("🎧 Urdu Audio ➝ English Audio")
+english_text = st.text_area("Enter English text here:", height=100)
 
-audio_file = st.file_uploader("Upload Urdu Audio", type=["mp3", "wav", "m4a"], key="urdu_audio")
-if audio_file:
-    st.audio(audio_file, format="audio/mp3")
-
-    if st.button("🚀 Translate and Generate English Audio"):
-        with st.spinner("Transcribing Urdu audio..."):
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
-                tmp.write(audio_file.read())
-                urdu_audio_path = tmp.name
-
-            whisper_model = whisper.load_model("base")
-            result = whisper_model.transcribe(urdu_audio_path, language="ur")
-            urdu_text = result["text"]
-            st.markdown("### 📝 Transcribed Urdu")
-            st.write(urdu_text)
-
-        with st.spinner("Translating to English..."):
-            english_text = translate_urdu_to_english(urdu_text)
-            st.markdown("### 🌐 English Translation")
-            st.write(english_text)
-
-        with st.spinner("Generating English Audio..."):
-            english_audio_path = os.path.join(tempfile.gettempdir(), "english_audio.wav")
-            tts_model.tts_to_file(text=english_text, file_path=english_audio_path)
-            st.success("✅ English Audio Generated")
-            st.audio(english_audio_path)
-
-            with open(english_audio_path, "rb") as f:
-                st.download_button("⬇️ Download English Audio", f, file_name="english_audio.wav")
-
-# ---- Feature 2: Urdu Text ➝ ⚠️ Urdu Audio (DISABLED) ----
-st.header("📝 Urdu Text ➝ ⚠️ Urdu Audio (Not Available)")
-st.warning("Urdu TTS model not available. Feature temporarily disabled.")
-
-# ---- Feature 3: English Text ➝ English Audio ----
-st.header("📝 English Text ➝ English Audio")
-english_input = st.text_area("Enter English Text")
-if st.button("🎤 Convert to English Audio"):
-    if english_input.strip():
-        with st.spinner("Generating English Audio..."):
-            english_audio_path2 = os.path.join(tempfile.gettempdir(), "english_from_text.wav")
-            tts_model.tts_to_file(text=english_input, file_path=english_audio_path2)
-            st.success("✅ English Audio Generated")
-            st.audio(english_audio_path2)
-
-            with open(english_audio_path2, "rb") as f:
-                st.download_button("⬇️ Download English Audio", f, file_name="english_from_text.wav")
+if st.button("🔊 Generate English Audio"):
+    if english_text.strip() == "":
+        st.warning("Please enter some text.")
     else:
-        st.warning("Please enter some English text.")
+        with st.spinner("Generating English audio..."):
+            audio_path = synthesize_with_coqui(english_text, english_tts)
+            st.audio(audio_path, format="audio/wav")
+            with open(audio_path, "rb") as f:
+                st.download_button("📥 Download Audio", f, file_name="english_audio.wav")
+
+st.markdown("---")
+st.header("✍️ Urdu Text ➝ 🔊 Spoken Urdu")
+
+urdu_text = st.text_area("اردو متن یہاں درج کریں:", height=100)
+
+if st.button("🔊 Generate Urdu Audio"):
+    if urdu_text.strip() == "":
+        st.warning("براہ کرم کچھ اردو متن درج کریں۔")
+    else:
+        with st.spinner("اردو آڈیو تیار ہو رہا ہے..."):
+            mp3_fp = synthesize_with_gtts(urdu_text, lang="ur")
+            st.audio(mp3_fp, format="audio/mp3")
+            st.download_button("📥 Download Audio", mp3_fp, file_name="urdu_audio.mp3")
+
+st.markdown("---")
+st.caption("Made for YouTube monetization — all audio TTS is copyright-safe ✅")
