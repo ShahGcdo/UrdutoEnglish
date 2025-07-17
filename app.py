@@ -1,4 +1,9 @@
 import streamlit as st
+import transformers
+
+st.write("✅ Transformers is installed!")
+
+import streamlit as st
 import tempfile
 import os
 from gtts import gTTS
